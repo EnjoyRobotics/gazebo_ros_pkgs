@@ -25,9 +25,13 @@
 #endif
 #include <sensor_msgs/msg/imu.hpp>
 
+#include "Eigen/Core"
+#include "Eigen/Geometry"
+
 #include <iostream>
 #include <memory>
 #include <string>
+#include <random>
 
 namespace gazebo_plugins
 {
@@ -48,6 +52,11 @@ public:
 
   /// Publish latest imu data to ROS
   void OnUpdate();
+
+  // Random number generation
+  std::random_device dev_;
+  std::shared_ptr<std::mt19937> rng_;
+  std::shared_ptr<std::normal_distribution<float>> normal_dist_;
 };
 
 GazeboRosImuSensor::GazeboRosImuSensor()
@@ -92,6 +101,25 @@ void GazeboRosImuSensor::Load(gazebo::sensors::SensorPtr _sensor, sdf::ElementPt
     impl_->sensor_->SetWorldToReferenceOrientation(ignition::math::Quaterniond::Identity);
   }
 
+  // Add noise to orientation
+  double orientation_noise_mean = 0.;
+  double orientation_noise_std = 0.;
+
+  if (_sdf->HasElement("orientation")) {
+    auto ori_elem = _sdf->GetElement("orientation");
+    if (ori_elem->HasElement("mean"))
+      if (!ori_elem->GetElement("mean")->GetValue()->Get<double>(orientation_noise_mean))
+        RCLCPP_INFO(impl_->ros_node_->get_logger(), "Failed to get orientation noise mean");
+    if (ori_elem->HasElement("std"))
+      if (!ori_elem->GetElement("std")->GetValue()->Get<double>(orientation_noise_std))
+        RCLCPP_INFO(impl_->ros_node_->get_logger(), "Failed to get orientation noise std");
+  }
+  impl_->rng_ = std::make_shared<std::mt19937>(impl_->dev_());
+  impl_->normal_dist_ = std::make_shared<std::normal_distribution<float>>(orientation_noise_mean, orientation_noise_std);
+
+  RCLCPP_INFO(impl_->ros_node_->get_logger(), "Orientation noise mean: %f, std: %f",
+    orientation_noise_mean, orientation_noise_std);
+
   impl_->pub_ = impl_->ros_node_->create_publisher<sensor_msgs::msg::Imu>(
     "~/out", qos.get_publisher_qos("~/out", rclcpp::SensorDataQoS().reliable()));
 
@@ -116,6 +144,11 @@ void GazeboRosImuSensor::Load(gazebo::sensors::SensorPtr _sensor, sdf::ElementPt
     gazebo_ros::NoiseVariance(impl_->sensor_->Noise(SNT::IMU_LINACC_Y_NOISE_METERS_PER_S_SQR));
   msg->linear_acceleration_covariance[8] =
     gazebo_ros::NoiseVariance(impl_->sensor_->Noise(SNT::IMU_LINACC_Z_NOISE_METERS_PER_S_SQR));
+
+  const float variance = std::pow(orientation_noise_mean, 2);
+  msg->orientation_covariance[0] = variance;
+  msg->orientation_covariance[4] = variance;
+  msg->orientation_covariance[8] = variance;
 
   impl_->msg_ = msg;
 
@@ -142,6 +175,22 @@ void GazeboRosImuSensorPrivate::OnUpdate()
   IGN_PROFILE_END();
   IGN_PROFILE_BEGIN("Publish");
 #endif
+
+  auto q_value = Eigen::Quaternionf(
+    msg_->orientation.w,
+    msg_->orientation.x,
+    msg_->orientation.y,
+    msg_->orientation.z);
+  Eigen::Quaternionf q_noise, q_final;
+  q_noise = Eigen::AngleAxisf((*normal_dist_)(*rng_), Eigen::Vector3f::UnitX())
+          * Eigen::AngleAxisf((*normal_dist_)(*rng_), Eigen::Vector3f::UnitY())
+          * Eigen::AngleAxisf((*normal_dist_)(*rng_), Eigen::Vector3f::UnitZ());
+  q_final = q_value * q_noise;
+  msg_->orientation.x = q_final.x();
+  msg_->orientation.y = q_final.y();
+  msg_->orientation.z = q_final.z();
+  msg_->orientation.w = q_final.w();
+
   // Publish message
   pub_->publish(*msg_);
 #ifdef IGN_PROFILER_ENABLE
