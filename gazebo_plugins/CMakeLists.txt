@@ -163,7 +163,7 @@ endif()
 add_library(gazebo_ros_imu_sensor SHARED
   src/gazebo_ros_imu_sensor.cpp
 )
-target_include_directories(gazebo_ros_imu_sensor PUBLIC include)
+target_include_directories(gazebo_ros_imu_sensor PUBLIC include /usr/include/eigen3)
 ament_target_dependencies(gazebo_ros_imu_sensor
   "gazebo_ros"
   "sensor_msgs"
