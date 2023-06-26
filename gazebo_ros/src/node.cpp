@@ -144,14 +144,14 @@ Node::SharedPtr Node::Get(sdf::ElementPtr sdf, std::string node_name)
   return node;
 }
 
-Node::SharedPtr Node::Get()
+Node::SharedPtr Node::Get(std::string node_name /*="gazebo"*/)
 {
   Node::SharedPtr node = static_node_.lock();
 
   if (!node) {
     rclcpp::NodeOptions node_options;
     node_options.allow_undeclared_parameters(true);
-    node = CreateWithArgs("gazebo", "", node_options);
+    node = CreateWithArgs(node_name, "", node_options);
     static_node_ = node;
   }
 

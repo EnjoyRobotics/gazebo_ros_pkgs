@@ -49,13 +49,13 @@ public:
   /// Destructor
   virtual ~Node();
 
-  /// Get a static node called "gazebo" which can be shared by several plugins.
+  /// Get a static node which can be shared by several plugins.
   /**
    * \details This will call rclcpp::init if it hasn't been called yet.
    * \details The node is created the first time this is called.
    * \return A shared pointer to a #gazebo_ros::Node
    */
-  static SharedPtr Get();
+  static SharedPtr Get(std::string node_name = "gazebo");
 
   /// Get reference to a #gazebo_ros::Node and add it to the global #gazebo_ros::Executor.
   /**
